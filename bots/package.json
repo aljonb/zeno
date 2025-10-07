@@ -1,0 +1,32 @@
+{
+  "name": "bato-rss-bots",
+  "version": "1.0.0",
+  "description": "Automated RSS feed bot system for Bato social network",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "run": "node index.js now",
+    "dev": "node index.js",
+    "test": "node index.js now"
+  },
+  "keywords": [
+    "rss",
+    "bot",
+    "news",
+    "social-media",
+    "automation"
+  ],
+  "author": "Bato",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "dotenv": "^17.2.2",
+    "node-cron": "^3.0.3",
+    "openai": "^6.1.0",
+    "rss-parser": "^3.13.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
