@@ -67,8 +67,8 @@ const BOT_CONFIGS = [
     
     feeds: [
       'https://www.mmafighting.com/rss/current',
-      'https://www.bloodyelbow.com/rss/current',
-      'https://mmajunkie.usatoday.com/feed'
+      'https://www.youtube.com/gaming/trending',
+      'https://rss.app/feeds/qwxrKwMR5B8oYq7k.xml'
     ],
     
     schedule: '*/15 * * * *',
@@ -108,9 +108,9 @@ const BOT_CONFIGS = [
     bio: '📰 Breaking news and stories from around the globe',
     
     feeds: [
-      'https://feeds.reuters.com/Reuters/worldNews',
-      'https://rss.ap.org/rss/world.rss',
-      'https://feeds.bbci.co.uk/news/rss.xml'
+      'https://rss.app/feeds/qwxrKwMR5B8oYq7k.xml',
+      'https://rss.app/feeds/E5L9GwwxQOUEEO2V.xml',
+      'https://rss.app/feeds/y9at5b6p3vCdwCnm.xml'
     ],
     
     schedule: '*/10 * * * *', // Every 10 minutes (breaking news)

@@ -6,7 +6,7 @@
  * Schedules and runs multiple RSS news bots using node-cron
  */
 
-require('dotenv').config()
+require('dotenv').config();
 const cron = require('node-cron');
 const { createClient } = require('@supabase/supabase-js');
 const { createOpenAIClient } = require('./lib/summarizer');
