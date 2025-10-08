@@ -63,7 +63,7 @@ const BOT_CONFIGS = [
     email: 'mmanews@bato.bot',
     user_id: 'bot_mmanews',
     avatar_url: 'https://api.dicebear.com/7.x/icons/svg?seed=mmanews&backgroundColor=dc2626',
-    bio: '🥊 Your source for MMA, UFC, and combat sports news',
+    bio: '🥊 News aggregator for MMA, gaming, and more - each post shows its source',
     
     feeds: [
       'https://www.mmafighting.com/rss/current',
@@ -73,7 +73,9 @@ const BOT_CONFIGS = [
     
     schedule: '*/15 * * * *',
     
-    summaryPrompt: 'You are an MMA news bot. Summarize this MMA/combat sports article in an exciting, engaging way (200-280 characters). Include relevant hashtags like #MMA #UFC #CombatSports. Be enthusiastic and capture the energy of the sport.',
+    // Note: summaryPrompt is ignored - all bots use neutral summarization
+    // Each post displays its source, so content type is clear to users
+    summaryPrompt: null,
   },
   
   {

@@ -5,7 +5,7 @@
  * Coordinates: RSS fetch → deduplication → summarization → posting
  */
 
-const { fetchItemsForBot } = require('./rss-fetcher');
+const { fetchItemsForBot, fetchItemsForBotSeparately } = require('./rss-fetcher');
 const { filterUnprocessedItems, markItemAsProcessed } = require('./deduplicator');
 const { generateSummariesBatch } = require('./summarizer');
 const { createPostsBatch, verifyBotProfile } = require('./post-creator');
@@ -22,6 +22,8 @@ async function runBot(supabase, openai, botConfig, options = {}) {
   const {
     fetchWindowMinutes = 60,
     maxPostsPerRun = 5,
+    maxPostsPerFeed = 2,
+    processFeedsSeparately = true,
     openaiDelayMs = 1000,
     openaiModel = 'gpt-4o-mini',
     dryRun = false
@@ -40,6 +42,7 @@ async function runBot(supabase, openai, botConfig, options = {}) {
     itemsNew: 0,
     itemsSummarized: 0,
     postsCreated: 0,
+    feedsProcessed: 0,
     errors: [],
     duration: 0
   };
@@ -53,40 +56,109 @@ async function runBot(supabase, openai, botConfig, options = {}) {
       throw new Error(`Bot profile not found: ${botConfig.user_id}. Run scripts/create-bot-profiles.sql first.`);
     }
     
-    // Step 2: Fetch RSS feed items
-    console.log(`\n📡 Step 2: Fetching RSS feeds (last ${fetchWindowMinutes} minutes)...`);
-    const items = await fetchItemsForBot(botConfig, fetchWindowMinutes);
-    results.itemsFetched = items.length;
+    let itemsToProcess = [];
     
-    if (items.length === 0) {
-      console.log('ℹ️  No recent items found in feeds');
-      results.success = true;
-      return results;
+    if (processFeedsSeparately) {
+      // NEW: Process each feed separately for balanced representation
+      console.log(`\n📡 Step 2: Fetching RSS feeds separately (last ${fetchWindowMinutes} minutes)...`);
+      const separatedFeeds = await fetchItemsForBotSeparately(botConfig, fetchWindowMinutes);
+      
+      if (separatedFeeds.length === 0) {
+        console.log('ℹ️  No feeds returned any items');
+        results.success = true;
+        return results;
+      }
+      
+      results.feedsProcessed = separatedFeeds.length;
+      
+      // Process each feed individually
+      for (const feed of separatedFeeds) {
+        console.log(`\n🔍 Processing feed: ${feed.feedUrl}`);
+        console.log(`   Found ${feed.items.length} recent items`);
+        
+        results.itemsFetched += feed.items.length;
+        
+        if (feed.items.length === 0) {
+          console.log('   ℹ️  No recent items in this feed');
+          continue;
+        }
+        
+        // Step 3: Filter out already-processed items for this feed
+        const newItems = await filterUnprocessedItems(supabase, botConfig.id, feed.items);
+        results.itemsNew += newItems.length;
+        
+        if (newItems.length === 0) {
+          console.log('   ℹ️  All items from this feed have been processed');
+          continue;
+        }
+        
+        console.log(`   ✅ Found ${newItems.length} new items`);
+        
+        // Attach feedTitle to each item so posts can show the source
+        const itemsWithSource = newItems.map(item => ({
+          ...item,
+          feedTitle: feed.feedTitle || extractDomainName(feed.feedUrl),
+          // Add placeholder for AI summary (will be null until summarizer is enabled)
+          aiSummary: null,
+          originalContent: item.content || item.title
+        }));
+        
+        // Add items with source info
+        itemsToProcess.push(...itemsWithSource);
+      }
+      
+      // No overall limit - process ALL new items from all feeds
+      
+      if (itemsToProcess.length === 0) {
+        console.log('\nℹ️  No new items to process from any feed');
+        results.success = true;
+        return results;
+      }
+      
+      console.log(`\n📊 Total items to process: ${itemsToProcess.length} (from ${results.feedsProcessed} feeds)`);
+      
+    } else {
+      // ORIGINAL: Combine all feeds
+      console.log(`\n📡 Step 2: Fetching RSS feeds (last ${fetchWindowMinutes} minutes)...`);
+      const items = await fetchItemsForBot(botConfig, fetchWindowMinutes);
+      results.itemsFetched = items.length;
+      
+      if (items.length === 0) {
+        console.log('ℹ️  No recent items found in feeds');
+        results.success = true;
+        return results;
+      }
+      
+      console.log(`✅ Fetched ${items.length} recent items`);
+      
+      // Step 3: Filter out already-processed items (deduplication)
+      console.log('\n🔍 Step 3: Checking for duplicates...');
+      const newItems = await filterUnprocessedItems(supabase, botConfig.id, items);
+      results.itemsNew = newItems.length;
+      
+      if (newItems.length === 0) {
+        console.log('ℹ️  All items have already been processed');
+        results.success = true;
+        return results;
+      }
+      
+      console.log(`✅ Found ${newItems.length} new items to process`);
+      
+      // Process ALL new items (no limit)
+      // Add placeholders for AI summary and original content
+      itemsToProcess = newItems.map(item => ({
+        ...item,
+        aiSummary: null,
+        originalContent: item.content || item.title
+      }));
     }
     
-    console.log(`✅ Fetched ${items.length} recent items`);
+    // Step 4: SKIP AI summarization (disabled for now - showing original content)
+    console.log(`\n📝 Step 4: Using original RSS content (AI summarizer disabled)...`);
     
-    // Step 3: Filter out already-processed items (deduplication)
-    console.log('\n🔍 Step 3: Checking for duplicates...');
-    const newItems = await filterUnprocessedItems(supabase, botConfig.id, items);
-    results.itemsNew = newItems.length;
-    
-    if (newItems.length === 0) {
-      console.log('ℹ️  All items have already been processed');
-      results.success = true;
-      return results;
-    }
-    
-    console.log(`✅ Found ${newItems.length} new items to process`);
-    
-    // Limit items to process
-    const itemsToProcess = newItems.slice(0, maxPostsPerRun);
-    if (newItems.length > maxPostsPerRun) {
-      console.log(`⚠️  Limiting to ${maxPostsPerRun} items (${newItems.length - maxPostsPerRun} will be processed next run)`);
-    }
-    
-    // Step 4: Generate summaries using OpenAI
-    console.log(`\n🤖 Step 4: Generating summaries using OpenAI (${openaiModel})...`);
+    // Items already have originalContent and aiSummary (null) from earlier steps
+    // When summarizer is re-enabled, uncomment the code below:
+    /*
     const itemsWithSummaries = await generateSummariesBatch(
       openai,
       itemsToProcess,
@@ -94,15 +166,13 @@ async function runBot(supabase, openai, botConfig, options = {}) {
       openaiDelayMs,
       openaiModel
     );
-    results.itemsSummarized = itemsWithSummaries.length;
+    // Then add: item.aiSummary = summary for each item
+    */
     
-    if (itemsWithSummaries.length === 0) {
-      console.log('⚠️  Failed to generate any summaries');
-      results.success = false;
-      return results;
-    }
+    const itemsWithSummaries = itemsToProcess; // Use items as-is with original content
+    results.itemsSummarized = 0; // No AI summaries generated
     
-    console.log(`✅ Generated ${itemsWithSummaries.length} summaries`);
+    console.log(`✅ Prepared ${itemsWithSummaries.length} items with original content`);
     
     // Step 5: Create posts in Supabase
     console.log('\n📝 Step 5: Creating posts...');
@@ -149,9 +219,12 @@ async function runBot(supabase, openai, botConfig, options = {}) {
   console.log('📊 Run Summary:');
   console.log(`   Bot: ${botConfig.name}`);
   console.log(`   Status: ${results.success ? '✅ Success' : '❌ Failed'}`);
+  if (results.feedsProcessed > 0) {
+    console.log(`   Feeds Processed: ${results.feedsProcessed}`);
+  }
   console.log(`   Items Fetched: ${results.itemsFetched}`);
   console.log(`   New Items: ${results.itemsNew}`);
-  console.log(`   Summaries Generated: ${results.itemsSummarized}`);
+  console.log(`   AI Summaries Generated: ${results.itemsSummarized} (summarizer disabled)`);
   console.log(`   Posts Created: ${results.postsCreated}`);
   console.log(`   Duration: ${(results.duration / 1000).toFixed(2)}s`);
   if (results.errors.length > 0) {
@@ -223,6 +296,22 @@ function printOverallSummary(results) {
   console.log(`   Total Posts Created: ${totalPosts}`);
   console.log(`   Total Duration: ${(totalDuration / 1000).toFixed(2)}s`);
   console.log('█'.repeat(80) + '\n');
+}
+
+/**
+ * Extract a readable domain name from a feed URL
+ * @param {string} feedUrl - RSS feed URL
+ * @returns {string} - Readable domain name
+ */
+function extractDomainName(feedUrl) {
+  try {
+    const url = new URL(feedUrl);
+    let domain = url.hostname.replace('www.', '');
+    domain = domain.charAt(0).toUpperCase() + domain.slice(1);
+    return domain;
+  } catch {
+    return 'Unknown Source';
+  }
 }
 
 /**

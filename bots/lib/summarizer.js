@@ -21,7 +21,7 @@ function createOpenAIClient(apiKey) {
  * Generate a post summary from an RSS item
  * @param {OpenAI} openai - OpenAI client
  * @param {Object} item - RSS item with title and content
- * @param {string} customPrompt - Bot-specific prompt instructions
+ * @param {string} customPrompt - Bot-specific prompt instructions (IGNORED - kept for compatibility)
  * @param {string} model - OpenAI model to use (default: gpt-4o-mini)
  * @returns {Promise<string>} - Generated summary
  */
@@ -36,9 +36,10 @@ Content: ${item.content.substring(0, 2000)} ${item.content.length > 2000 ? '...'
 Link: ${item.link}
     `.trim();
     
-    // Build the system prompt
-    const systemPrompt = customPrompt || 
-      'You are a news bot. Summarize this article in a concise, engaging way (200-280 characters). Include relevant hashtags. Be informative and capture the key points.';
+    // Build the system prompt - Use neutral, source-agnostic prompt
+    // This prevents confusion when feed content doesn't match bot's "role"
+    const systemPrompt = 
+      'You are a news summarization assistant. Create a concise, factual summary of this article (200-280 characters). Be informative and capture the key points. Use a neutral, journalistic tone. If appropriate, include 1-2 relevant hashtags at the end.';
     
     console.log(`[Summarizer] Generating summary for: ${item.title.substring(0, 50)}...`);
     

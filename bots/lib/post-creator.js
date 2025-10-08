@@ -8,18 +8,32 @@
  * Create a post in Supabase
  * @param {Object} supabase - Supabase client
  * @param {Object} botConfig - Bot configuration
- * @param {string} content - Post content (summary)
- * @param {string} sourceUrl - Original article URL (optional, can be included in content)
+ * @param {string} content - Post content (original or AI summary)
+ * @param {string} sourceUrl - Original article URL (optional)
+ * @param {string} sourceName - Name of the RSS feed source (optional)
+ * @param {string} originalContent - Full original RSS content (for toggle feature)
+ * @param {string} aiSummary - AI-generated summary (null if summarizer disabled)
  * @returns {Promise<Object>} - Created post data or null
  */
-async function createPost(supabase, botConfig, content, sourceUrl = null) {
+async function createPost(supabase, botConfig, content, sourceUrl = null, sourceName = null, originalContent = null, aiSummary = null) {
   try {
     console.log(`[Post Creator] Creating post for bot: ${botConfig.username}`);
     console.log(`[Post Creator] Content: ${content.substring(0, 100)}...`);
     
+    // Format content to include source (URL stored separately in rss_source_url)
+    let formattedContent = content;
+    if (sourceName) {
+      formattedContent = `📰 ${sourceName}\n\n${content}`;
+    }
+    
     // Prepare post data matching your posts table schema
     const postData = {
-      content: content,
+      content: formattedContent,
+      content_type: 'rss_bot', // Mark as RSS bot post
+      rss_original_content: originalContent, // Store original for toggle
+      rss_ai_summary: aiSummary, // Store AI summary (null if disabled)
+      rss_source_url: sourceUrl, // Store source URL
+      rss_source_name: sourceName, // Store source name
       user_id: botConfig.user_id,
       user_name: botConfig.name,
       user_email: botConfig.email,
@@ -72,10 +86,12 @@ async function createPostsBatch(supabase, botConfig, items, maxPosts = 5, dryRun
   if (dryRun) {
     console.log('[Post Creator] 🏃 DRY RUN MODE - Not actually creating posts');
     itemsToPost.forEach((item, index) => {
+      const displayContent = item.aiSummary || item.originalContent || item.content || item.title;
       console.log(`\n[DRY RUN] Post ${index + 1}:`);
       console.log(`  Bot: ${botConfig.username}`);
       console.log(`  Title: ${item.title}`);
-      console.log(`  Summary: ${item.summary}`);
+      console.log(`  Display Content: ${displayContent.substring(0, 100)}...`);
+      console.log(`  Has AI Summary: ${item.aiSummary ? 'Yes' : 'No (using original)'}`);
       console.log(`  Link: ${item.link}`);
     });
     return [];
@@ -87,8 +103,20 @@ async function createPostsBatch(supabase, botConfig, items, maxPosts = 5, dryRun
     const item = itemsToPost[i];
     
     try {
-      // Use the summary as the post content
-      const post = await createPost(supabase, botConfig, item.summary, item.link);
+      // Determine what content to show (AI summary if available, otherwise original)
+      const displayContent = item.aiSummary || item.originalContent || item.content || item.title;
+      const sourceName = item.feedTitle || extractDomainName(item.feedUrl);
+      
+      // Create post with both original content and AI summary
+      const post = await createPost(
+        supabase, 
+        botConfig, 
+        displayContent,           // Content to display now
+        item.link,                // Source URL
+        sourceName,               // Source name
+        item.originalContent || item.content || item.title, // Original content
+        item.aiSummary            // AI summary (null if summarizer disabled)
+      );
       
       if (post) {
         createdPosts.push({
@@ -195,6 +223,23 @@ async function getBotPostStats(supabase, userId) {
       last24Hours: 0,
       latestPost: null
     };
+  }
+}
+
+/**
+ * Extract a readable domain name from a feed URL
+ * @param {string} feedUrl - RSS feed URL
+ * @returns {string} - Readable domain name
+ */
+function extractDomainName(feedUrl) {
+  try {
+    const url = new URL(feedUrl);
+    let domain = url.hostname.replace('www.', '');
+    // Capitalize first letter
+    domain = domain.charAt(0).toUpperCase() + domain.slice(1);
+    return domain;
+  } catch {
+    return 'Unknown Source';
   }
 }
 

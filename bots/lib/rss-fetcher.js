@@ -160,11 +160,77 @@ async function fetchItemsForBot(botConfig, minutesAgo = 60) {
   return await fetchMultipleFeeds(botConfig.feeds, minutesAgo);
 }
 
+/**
+ * Fetch items from multiple feeds, keeping them separated by source
+ * @param {Array<string>} feedUrls - Array of feed URLs
+ * @param {number} minutesAgo - Filter items published within this many minutes
+ * @returns {Promise<Array>} - Array of feed results, each with its own items
+ */
+async function fetchFeedsSeparately(feedUrls, minutesAgo = 60) {
+  console.log(`[RSS Fetcher] Fetching ${feedUrls.length} feeds separately...`);
+  
+  // Fetch all feeds concurrently
+  const feedResults = await Promise.all(
+    feedUrls.map(url => fetchFeed(url))
+  );
+  
+  // Process each feed individually
+  const separatedFeeds = [];
+  
+  for (const result of feedResults) {
+    if (!result.success) {
+      console.warn(`[RSS Fetcher] Skipping failed feed: ${result.feedUrl}`);
+      continue;
+    }
+    
+    // Filter by date
+    const recentItems = filterItemsByDate(result.items, minutesAgo);
+    console.log(`[RSS Fetcher] ${recentItems.length} recent items from ${result.feedUrl}`);
+    
+    // Normalize items
+    const normalizedItems = recentItems.map(item => 
+      normalizeItem(item, result.feedUrl)
+    );
+    
+    // Sort this feed's items by date (newest first)
+    normalizedItems.sort((a, b) => b.pubDateObject - a.pubDateObject);
+    
+    separatedFeeds.push({
+      feedUrl: result.feedUrl,
+      feedTitle: result.title,
+      items: normalizedItems
+    });
+  }
+  
+  console.log(`[RSS Fetcher] Successfully fetched ${separatedFeeds.length} feeds separately`);
+  
+  return separatedFeeds;
+}
+
+/**
+ * Fetch items for a specific bot configuration, separated by feed source
+ * @param {Object} botConfig - Bot configuration object
+ * @param {number} minutesAgo - Filter items published within this many minutes
+ * @returns {Promise<Array>} - Array of feed results
+ */
+async function fetchItemsForBotSeparately(botConfig, minutesAgo = 60) {
+  if (!botConfig.feeds || botConfig.feeds.length === 0) {
+    console.warn(`[RSS Fetcher] Bot ${botConfig.id} has no feeds configured`);
+    return [];
+  }
+  
+  console.log(`[RSS Fetcher] Fetching items separately for bot: ${botConfig.name}`);
+  
+  return await fetchFeedsSeparately(botConfig.feeds, minutesAgo);
+}
+
 module.exports = {
   fetchFeed,
   filterItemsByDate,
   normalizeItem,
   fetchMultipleFeeds,
-  fetchItemsForBot
+  fetchItemsForBot,
+  fetchFeedsSeparately,
+  fetchItemsForBotSeparately
 };
 

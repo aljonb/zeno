@@ -25,7 +25,9 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 // Bot run options (can be overridden by environment variables)
 const RUN_OPTIONS = {
   fetchWindowMinutes: parseInt(process.env.FETCH_WINDOW_MINUTES) || 60,
-  maxPostsPerRun: parseInt(process.env.MAX_POSTS_PER_RUN) || 5,
+  maxPostsPerRun: parseInt(process.env.MAX_POSTS_PER_RUN) || 999999, // Effectively unlimited - shows all items
+  maxPostsPerFeed: parseInt(process.env.MAX_POSTS_PER_FEED) || 999999, // Effectively unlimited - shows all items
+  processFeedsSeparately: process.env.PROCESS_FEEDS_SEPARATELY !== 'false', // default true
   openaiDelayMs: parseInt(process.env.OPENAI_DELAY_MS) || 1000,
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
   dryRun: process.env.DRY_RUN === 'true'
@@ -272,6 +274,8 @@ async function main() {
   console.log('Configuration:');
   console.log(`   Fetch Window: ${RUN_OPTIONS.fetchWindowMinutes} minutes`);
   console.log(`   Max Posts/Run: ${RUN_OPTIONS.maxPostsPerRun}`);
+  console.log(`   Max Posts/Feed: ${RUN_OPTIONS.maxPostsPerFeed}`);
+  console.log(`   Process Feeds Separately: ${RUN_OPTIONS.processFeedsSeparately}`);
   console.log(`   OpenAI Model: ${RUN_OPTIONS.openaiModel}`);
   console.log(`   OpenAI Delay: ${RUN_OPTIONS.openaiDelayMs}ms`);
   console.log(`   Dry Run: ${RUN_OPTIONS.dryRun}`);
